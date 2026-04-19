@@ -1,0 +1,37 @@
+  Content:
+<think>
+The user is asking for a product spec document for a simple calculator program. They want me to act as a senior product manager and output:
+1. Product name
+2. Core features (3 points)
+3. Tech stack suggestions
+
+This is a straightforward request that doesn't conflict with any policies. I'll create a concise product spec document.
+</think>
+
+# Product Specification: Simple Calculator
+
+## 1. Product Name
+**QuickCalc** – A lightweight, user-friendly calculator for everyday math needs.
+
+---
+
+## 2. Core Features
+
+- **Basic Arithmetic Operations** – Support for addition, subtraction, multiplication, and division with instant results.
+- **Clear & Responsive UI** – Large buttons, real-time display updates, and intuitive layout optimized for both mouse and keyboard input.
+- **Error Handling** – Graceful handling of invalid inputs (e.g., division by zero) with user-friendly error messages.
+
+---
+
+## 3. Tech Stack Suggestions
+
+| Component | Recommended Stack |
+|-----------|-------------------|
+| **Frontend** | HTML5, CSS3, Vanilla JavaScript |
+| **Desktop Version** | Electron or Python (Tkinter/PyQt) |
+| **Mobile Version** | React Native or Flutter |
+| **Hosting/Build** | Static web hosting (Vercel/Netlify) or app stores |
+
+---
+
+*This spec serves as a starting point for development. Additional features like history tracking or scientific functions can be considered for future iterations.*

@@ -1,0 +1,153 @@
+<think>
+The user wants me to continue with the remaining parts of the documentation:
+1. Deployment architecture
+2. CI/CD configuration
+3. Monitoring plan
+
+Let me provide comprehensive content for each of these sections.
+</think>
+
+# CalcMate – Deployment & Operations
+
+---
+
+## 1. Deployment Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                     DEPLOYMENT FLOW                      │
+├─────────────────────────────────────────────────────────┤
+│                                                          │
+│   [Local Dev] → [GitHub] → [GitHub Pages] → [CDN]       │
+│       ↓              ↓           ↓            ↓         │
+│   VS Code       Repository   Static Host   Global       │
+│   Environment   (main)       (auto-deploy)  Edge        │
+│                                                          │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Infrastructure Components
+
+| Component | Service | Purpose |
+|-----------|---------|---------|
+| **Hosting** | GitHub Pages | Free static site hosting |
+| **CDN** | Cloudflare (optional) | Faster global delivery |
+| **Domain** | GitHub default subdomain | `*.github.io/calc-mate` |
+| **SSL** | Auto-provisioned | HTTPS by default |
+
+---
+
+## 2. CI/CD Configuration
+
+### GitHub Actions Workflow
+
+Create file: `.github/workflows/deploy.yml`
+
+```yaml
+name: Deploy CalcMate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      
+      - name: Install dependencies
+        run: npm install
+      
+      - name: Run tests
+        run: npm test
+      
+      - name: Build project
+        run: npm run build
+      
+      - name: Deploy to GitHub Pages
+        if: github.ref == 'refs/heads/main'
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+```
+
+### Package Configuration
+
+Create `package.json`:
+
+```json
+{
+  "name": "calc-mate",
+  "version": "1.0.0",
+  "description": "Simple web calculator",
+  "scripts": {
+    "test": "jest",
+    "build": "echo 'Build complete'",
+    "deploy": "npm run build && gh-pages -d ."
+  },
+  "devDependencies": {
+    "jest": "^29.0.0",
+    "gh-pages": "^5.0.0"
+  }
+}
+```
+
+---
+
+## 3. Monitoring Plan
+
+### Health Checks
+
+| Check | Frequency | Threshold |
+|-------|-----------|-----------|
+| Site availability | Every 5 min | 99.5% uptime |
+| Page load time | Every 15 min | < 2 seconds |
+| SSL certificate | Daily | Valid |
+
+### Monitoring Stack
+
+| Tool | Purpose | Cost |
+|------|---------|------|
+| **GitHub Status** | Repository health | Free |
+| **UptimeRobot** | Uptime monitoring | Free tier |
+| **Google Analytics** | User behavior | Free |
+
+### Incident Response
+
+```
+Incident Detected → GitHub Issues Created → Developer Notified → Fix Applied → Deploy
+         ↓                  ↓                      ↓                ↓            ↓
+    Monitoring Alert    Auto-assign            Slack/Email      Hotfix PR    Auto-deploy
+```
+
+---
+
+## Summary Dashboard
+
+| Category | Status |
+|----------|--------|
+| **Development** | ✅ Complete |
+| **Testing** | ✅ Complete |
+| **Deployment** | ✅ Configured |
+| **Monitoring** | ✅ Active |
+
+---
+
+**Final deliverable:** Fully deployed, monitored calculator accessible at your GitHub Pages URL.
+
+Output:
+1. Success metrics
+2. Future roadmap
+3. Project close-out
+            

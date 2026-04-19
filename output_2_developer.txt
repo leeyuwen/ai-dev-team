@@ -1,0 +1,261 @@
+<think>
+The user wants me to act as a senior product manager and provide:
+1. Tech stack choice
+2. Code implementation
+3. Deployment steps
+
+This follows the previous product specification I created for CalcMate calculator.
+
+Let me provide a comprehensive response with these three elements.
+
+I'll choose a simple vanilla JavaScript stack since it's a simple calculator and doesn't need a framework.
+
+For code implementation, I'll create a clean, functional calculator with HTML, CSS, and JavaScript.
+
+For deployment, I'll suggest GitHub Pages as it's free and simple for static sites.
+</think>
+
+# CalcMate Implementation Plan
+
+---
+
+## 1. Tech Stack Choice
+
+**Selected Stack:** Vanilla Web Technologies (Lightweight & Fast)
+
+| Layer | Technology | Rationale |
+|-------|------------|-----------|
+| Structure | HTML5 | Semantic markup, accessible |
+| Styling | CSS3 (Flexbox) | Responsive, minimal dependencies |
+| Logic | Vanilla JavaScript | No build step, fast load time |
+| Version Control | Git + GitHub | Free hosting via GitHub Pages |
+
+---
+
+## 2. Code Implementation
+
+### File Structure
+```
+/calc-mate
+  ├── index.html
+  ├── styles.css
+  └── script.js
+```
+
+### index.html
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CalcMate</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="calculator">
+        <input type="text" id="display" readonly placeholder="0">
+        <div class="buttons">
+            <button onclick="clearDisplay()">C</button>
+            <button onclick="appendValue('/')">÷</button>
+            <button onclick="appendValue('*')">×</button>
+            <button onclick="backspace()">⌫</button>
+            <button onclick="appendValue('7')">7</button>
+            <button onclick="appendValue('8')">8</button>
+            <button onclick="appendValue('9')">9</button>
+            <button onclick="appendValue('-')">−</button>
+            <button onclick="appendValue('4')">4</button>
+            <button onclick="appendValue('5')">5</button>
+            <button onclick="appendValue('6')">6</button>
+            <button onclick="appendValue('+')">+</button>
+            <button onclick="appendValue('1')">1</button>
+            <button onclick="appendValue('2')">2</button>
+            <button onclick="appendValue('3')">3</button>
+            <button class="equals" onclick="calculate()">=</button>
+            <button class="zero" onclick="appendValue('0')">0</button>
+            <button onclick="appendValue('.')">.</button>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
+```
+
+### styles.css
+```css
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', sans-serif;
+    background: #f0f2f5;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+}
+
+.calculator {
+    background: #fff;
+    padding: 20px;
+    border-radius: 16px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    width: 320px;
+}
+
+#display {
+    width: 100%;
+    padding: 20px;
+    font-size: 2rem;
+    text-align: right;
+    border: none;
+    background: #f8f9fa;
+    border-radius: 8px;
+    margin-bottom: 16px;
+}
+
+.buttons {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+}
+
+button {
+    padding: 20px;
+    font-size: 1.4rem;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    background: #e9ecef;
+    transition: 0.2s;
+}
+
+button:hover {
+    background: #dee2e6;
+}
+
+button:active {
+    transform: scale(0.95);
+}
+
+button.equals {
+    background: #4a90d9;
+    color: white;
+    grid-row: span 5;
+}
+
+button.equals:hover {
+    background: #3a7bc8;
+}
+
+button.zero {
+    grid-column: span 2;
+}
+```
+
+### script.js
+```javascript
+let currentInput = '';
+let previousInput = '';
+let operator = null;
+
+function appendValue(value) {
+    currentInput += value;
+    updateDisplay();
+}
+
+function updateDisplay() {
+    document.getElementById('display').value = currentInput || '0';
+}
+
+function clearDisplay() {
+    currentInput = '';
+    previousInput = '';
+    operator = null;
+    updateDisplay();
+}
+
+function backspace() {
+    currentInput = currentInput.slice(0, -1);
+    updateDisplay();
+}
+
+function calculate() {
+    if (!operator || !currentInput) return;
+    
+    const prev = parseFloat(previousInput);
+    const curr = parseFloat(currentInput);
+    let result;
+
+    switch (operator) {
+        case '+': result = prev + curr; break;
+        case '-': result = prev - curr; break;
+        case '*': result = prev * curr; break;
+        case '/': result = curr !== 0 ? prev / curr : 'Error'; break;
+    }
+
+    currentInput = result.toString();
+    operator = null;
+    previousInput = '';
+    updateDisplay();
+}
+
+// Handle operator clicks
+document.querySelectorAll('button').forEach(btn => {
+    if (['+', '-', '*', '/'].includes(btn.textContent.trim())) {
+        btn.addEventListener('click', () => {
+            if (currentInput) {
+                previousInput = currentInput;
+                operator = btn.textContent.trim();
+                currentInput = '';
+            }
+        });
+    }
+});
+```
+
+---
+
+## 3. Deployment Steps
+
+### Step 1: Create Repository
+```bash
+# Create folder and initialize git
+mkdir calc-mate && cd calc-mate
+git init
+```
+
+### Step 2: Push to GitHub
+```bash
+# Add files
+git add .
+
+# Commit
+git commit -m "Initial commit: CalcMate calculator"
+
+# Create repo on GitHub, then:
+git remote add origin https://github.com/YOUR_USERNAME/calc-mate.git
+git branch -M main
+git push -u origin main
+```
+
+### Step 3: Enable GitHub Pages
+1. Go to **Repository Settings** → **Pages**
+2. Under "Source", select **main** branch and **/ (root)**
+3. Click **Save**
+4. Your calculator will be live at:
+   ```
+   https://YOUR_USERNAME.github.io/calc-mate
+   ```
+
+---
+
+| Phase | Timeline |
+|-------|----------|
+| Development | 2-3 hours |
+| Testing | 30 minutes |
+| Deployment | 10 minutes |
+| **Total** | ~4 hours |
