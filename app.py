@@ -26,9 +26,12 @@ async def serve_vue_app():
 
 @app.get("/app/assets/{path:path}")
 async def serve_vue_assets(path: str):
-    from starlette.staticfiles import StaticFiles
+    from starlette.responses import FileResponse
     assets_dir = os.path.join(DIST_DIR, "assets")
-    return StaticFiles(directory=assets_dir)(None, path)
+    file_path = os.path.join(assets_dir, path)
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(file_path)
 
 class DevelopmentRequest(BaseModel):
     requirement: str
