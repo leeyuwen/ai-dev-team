@@ -1,5 +1,6 @@
 from langchain_core.prompts import ChatPromptTemplate
 from config import create_llm
+from skill_manager import build_skill_context, get_skills_for_task
 
 def get_llm(provider=None):
     return create_llm(provider)
@@ -55,6 +56,8 @@ def developer_agent():
 产品规格: {spec}
 
 架构设计: {architecture}
+
+技能上下文: {skill_context}
 
 请输出以下内容:
 1. 技术栈选择

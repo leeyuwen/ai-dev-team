@@ -7,6 +7,7 @@ uvicorn
 streamlit
 python-dotenv
 pydantic-settings
+pyyaml
 
 # 工具依赖
 requests

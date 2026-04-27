@@ -17,6 +17,7 @@ export const useDevelopmentStore = defineStore('development', () => {
   const awaitingApproval = ref(false)
   const sessionId = ref('')
   const pendingSpec = ref('')
+  const skillContext = ref('')
   // 仅生成 PRD 模式
   const prdOnlyMode = ref(false)
   const prdLoading = ref(false)
@@ -66,6 +67,9 @@ export const useDevelopmentStore = defineStore('development', () => {
             break
           case 'await_approval':
             pendingSpec.value = event.data as string
+            if ((event as any).skill_context) {
+              skillContext.value = (event as any).skill_context as string
+            }
             awaitingApproval.value = true
             isRunning.value = false
             currentStep.value = 'await_approval'
@@ -162,6 +166,7 @@ export const useDevelopmentStore = defineStore('development', () => {
     abortFn = approveSpec(
       sessionId.value,
       modifiedSpec,
+      skillContext.value,
       (event: SSEEvent) => {
         switch (event.type) {
           case 'status':

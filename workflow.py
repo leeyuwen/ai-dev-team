@@ -11,6 +11,7 @@ class DevelopmentState(TypedDict):
     deployment_plan: str
     current_agent: str
     history: List[str]
+    skill_context: str
 
 def create_development_workflow():
     from agents import get_all_agents
@@ -39,7 +40,7 @@ def create_development_workflow():
     def developer_node(state):
         agent = agents["developer"]
         chain = agent["prompt"] | agent["llm"]
-        result = chain.invoke({"spec": state["spec"], "architecture": state["architecture"]})
+        result = chain.invoke({"spec": state["spec"], "architecture": state["architecture"], "skill_context": state.get("skill_context", "")})
         return {
             "code": result.content,
             "current_agent": "开发工程师",
@@ -89,6 +90,8 @@ def create_development_workflow():
 
 def run_development_workflow(requirement):
     workflow = create_development_workflow()
+    from skill_manager import build_skill_context
+    skill_context = build_skill_context(requirement)
 
     initial_state = DevelopmentState(
         requirement=requirement,
@@ -98,7 +101,8 @@ def run_development_workflow(requirement):
         test_report="",
         deployment_plan="",
         current_agent="",
-        history=[]
+        history=[],
+        skill_context=skill_context
     )
 
     config = {"configurable": {"thread_id": "default"}}

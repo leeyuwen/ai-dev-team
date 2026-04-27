@@ -13,6 +13,7 @@ export async function generatePrd(requirement: string): Promise<{ spec: string }
 export function approveSpec(
   sessionId: string,
   spec: string,
+  skillContext: string,
   onEvent: (event: SSEEvent) => void,
   onError: (error: Error) => void
 ): () => void {
@@ -25,7 +26,7 @@ export function approveSpec(
     fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_id: sessionId, spec }),
+      body: JSON.stringify({ session_id: sessionId, spec, skill_context: skillContext }),
       signal: controller.signal,
     })
       .then((res) => {

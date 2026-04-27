@@ -150,8 +150,10 @@ async def develop_stream(request: DevelopmentRequest):
     async def event_generator():
         load_env()
         from agents import get_all_agents
+        from skill_manager import build_skill_context
 
         agents_dict = get_all_agents()
+        skill_context = build_skill_context(request.requirement)
         log_request(request.requirement)
 
         async def send_event(event_type, data, done=False):
@@ -171,7 +173,7 @@ async def develop_stream(request: DevelopmentRequest):
 
             yield f"event: product_manager\ndata: {json.dumps({'type': 'product_manager', 'data': spec_result.content, 'done': False}, ensure_ascii=False)}\n\n"
 
-            yield f"event: await_approval\ndata: {json.dumps({'type': 'await_approval', 'data': spec_result.content, 'done': True}, ensure_ascii=False)}\n\n"
+            yield f"event: await_approval\ndata: {json.dumps({'type': 'await_approval', 'data': spec_result.content, 'skill_context': skill_context, 'done': True}, ensure_ascii=False)}\n\n"
 
             log_request_complete(1)
             executor.shutdown(wait=False)
@@ -202,6 +204,7 @@ async def approve_spec(request: dict):
 
     session_id = request.get("session_id", "default")
     modified_spec = request.get("spec", "")
+    skill_context = request.get("skill_context", "")
 
     if not session_id or not modified_spec:
         raise HTTPException(status_code=400, detail="session_id 和 spec 为必填项")
@@ -240,7 +243,8 @@ async def approve_spec(request: dict):
 
             code_result = await loop.run_in_executor(executor, lambda: dev_chain.invoke({
                 "spec": modified_spec,
-                "architecture": arch_result.content
+                "architecture": arch_result.content,
+                "skill_context": skill_context
             }))
             log_agent_complete("开发工程师", code_result.content)
 
@@ -296,6 +300,13 @@ async def approve_spec(request: dict):
 @app.get("/logs")
 async def get_logs(lines: int = 100):
     return {"logs": get_recent_logs(lines)}
+
+@app.get("/skills")
+async def list_skills():
+    """列出所有可用的 Skills"""
+    from skill_manager import list_skills, get_skills_for_task
+    skills = list_skills()
+    return {"skills": skills}
 
 @app.get("/")
 def root():
