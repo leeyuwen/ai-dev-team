@@ -4,6 +4,28 @@ from config import create_llm
 def get_llm(provider=None):
     return create_llm(provider)
 
+def architect_agent():
+    llm = get_llm()
+    prompt = ChatPromptTemplate.from_template("""
+你是一名资深系统架构师，负责根据产品需求文档设计系统架构和技术方案。
+
+用户需求: {requirement}
+
+产品规格文档: {spec}
+
+请输出以下内容:
+1. 系统概述
+2. 架构设计（包括架构图/技术选型）
+3. 模块划分
+4. 技术栈详细说明
+5. 关键技术方案
+""")
+    return {
+        "name": "架构师",
+        "prompt": prompt,
+        "llm": llm
+    }
+
 def product_manager_agent():
     llm = get_llm()
     prompt = ChatPromptTemplate.from_template("""
@@ -28,17 +50,18 @@ def product_manager_agent():
 def developer_agent():
     llm = get_llm()
     prompt = ChatPromptTemplate.from_template("""
-    你是一名资深全栈开发工程师，负责根据产品规格文档实现代码。
+你是一名资深全栈开发工程师，负责根据产品规格文档和架构设计实现代码。
 
-    产品规格: {spec}
+产品规格: {spec}
 
-    请输出以下内容:
-    1. 技术栈选择
-    2. 代码实现
-    3. 部署步骤
-    4. 测试建议
-    """)
+架构设计: {architecture}
 
+请输出以下内容:
+1. 技术栈选择
+2. 代码实现
+3. 部署步骤
+4. 测试建议
+""")
     return {
         "name": "开发工程师",
         "prompt": prompt,
@@ -89,6 +112,7 @@ def devops_agent():
 
 def get_all_agents():
     return {
+        "architect": architect_agent(),
         "product_manager": product_manager_agent(),
         "developer": developer_agent(),
         "tester": tester_agent(),

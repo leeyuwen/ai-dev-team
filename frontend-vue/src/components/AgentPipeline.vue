@@ -14,7 +14,7 @@
     </div>
 
     <!-- Agent steps -->
-    <div class="grid grid-cols-4 gap-4">
+    <div class="grid grid-cols-5 gap-4">
       <AgentCard
         v-for="agent in agents"
         :key="agent.key"
@@ -41,6 +41,7 @@ import AgentCard from './AgentCard.vue'
 
 const props = defineProps<{
   currentStep: AgentStep
+  architecture: string
   spec: string
   code: string
   testReport: string
@@ -58,6 +59,7 @@ const progress = computed(() => {
 
 const agents = [
   { key: 'pm' as AgentStep, label: '产品经理', icon: '📋' },
+  { key: 'arch' as AgentStep, label: '架构师', icon: '🏗️' },
   { key: 'dev' as AgentStep, label: '开发工程师', icon: '💻' },
   { key: 'test' as AgentStep, label: '测试工程师', icon: '🧪' },
   { key: 'devops' as AgentStep, label: '部署工程师', icon: '🚢' },
@@ -65,14 +67,14 @@ const agents = [
 
 function getContent(key: AgentStep): string {
   const map: Record<AgentStep, string> = {
-    idle: '', pm: props.spec, dev: props.code, test: props.testReport,
-    devops: props.deploymentPlan, done: '', error: ''
+    idle: '', pm: props.spec, arch: props.architecture, dev: props.code,
+    test: props.testReport, devops: props.deploymentPlan, done: '', error: ''
   }
   return map[key]
 }
 
 function isDone(key: AgentStep): boolean {
-  const order: AgentStep[] = ['pm', 'dev', 'test', 'devops', 'done']
+  const order: AgentStep[] = ['pm', 'arch', 'dev', 'test', 'devops', 'done']
   const currentIdx = order.indexOf(props.currentStep)
   return order.indexOf(key) < currentIdx || props.currentStep === 'done'
 }

@@ -38,6 +38,7 @@ class DevelopmentRequest(BaseModel):
 
 class DevelopmentResponse(BaseModel):
     requirement: str
+    architecture: str
     spec: str
     code: str
     test_report: str
@@ -70,6 +71,7 @@ async def develop(request: DevelopmentRequest):
         log_request_complete(len(result.get("history", [])))
         return DevelopmentResponse(
             requirement=result["requirement"],
+            architecture=result.get("architecture", ""),
             spec=result["spec"],
             code=result["code"],
             test_report=result["test_report"],
@@ -120,13 +122,24 @@ async def develop_stream(request: DevelopmentRequest):
 
             yield f"event: product_manager\ndata: {json.dumps({'type': 'product_manager', 'data': spec_result.content, 'done': False}, ensure_ascii=False)}\n\n"
 
+            arch_agent = agents_dict["architect"]
+            arch_chain = arch_agent["prompt"] | arch_agent["llm"]
+            status_msg = '架构师正在设计系统架构...'
+            yield f"event: status\ndata: {json.dumps({'type': 'status', 'data': status_msg, 'done': False}, ensure_ascii=False)}\n\n"
+            log_agent_start("架构师")
+
+            arch_result = await loop.run_in_executor(executor, lambda: arch_chain.invoke({"requirement": request.requirement, "spec": spec_result.content}))
+            log_agent_complete("架构师", arch_result.content)
+
+            yield f"event: architect\ndata: {json.dumps({'type': 'architect', 'data': arch_result.content, 'done': False}, ensure_ascii=False)}\n\n"
+
             dev_agent = agents_dict["developer"]
             dev_chain = dev_agent["prompt"] | dev_agent["llm"]
             status_msg = '开发工程师正在编写代码...'
             yield f"event: status\ndata: {json.dumps({'type': 'status', 'data': status_msg, 'done': False}, ensure_ascii=False)}\n\n"
             log_agent_start("开发工程师")
 
-            code_result = await loop.run_in_executor(executor, lambda: dev_chain.invoke({"spec": spec_result.content}))
+            code_result = await loop.run_in_executor(executor, lambda: dev_chain.invoke({"spec": spec_result.content, "architecture": arch_result.content}))
             log_agent_complete("开发工程师", code_result.content)
 
             yield f"event: developer\ndata: {json.dumps({'type': 'developer', 'data': code_result.content, 'done': False}, ensure_ascii=False)}\n\n"
@@ -155,12 +168,14 @@ async def develop_stream(request: DevelopmentRequest):
 
             final_result = {
                 "requirement": request.requirement,
+                "architecture": arch_result.content,
                 "spec": spec_result.content,
                 "code": code_result.content,
                 "test_report": test_result.content,
                 "deployment_plan": deploy_result.content,
                 "history": [
                     f"产品经理: {spec_result.content}",
+                    f"架构师: {arch_result.content}",
                     f"开发工程师: {code_result.content}",
                     f"测试工程师: {test_result.content}",
                     f"部署工程师: {deploy_result.content}"
@@ -170,7 +185,7 @@ async def develop_stream(request: DevelopmentRequest):
             yield f"event: status\ndata: {json.dumps({'type': 'status', 'data': '开发完成!', 'done': False}, ensure_ascii=False)}\n\n"
             yield f"event: complete\ndata: {json.dumps({'type': 'complete', 'data': final_result, 'done': True}, ensure_ascii=False)}\n\n"
 
-            log_request_complete(4)
+            log_request_complete(5)
             executor.shutdown(wait=False)
 
         except ValidationError as e:

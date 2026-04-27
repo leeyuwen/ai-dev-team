@@ -4,6 +4,7 @@ from langgraph.checkpoint.memory import MemorySaver
 
 class DevelopmentState(TypedDict):
     requirement: str
+    architecture: str
     spec: str
     code: str
     test_report: str
@@ -14,6 +15,16 @@ class DevelopmentState(TypedDict):
 def create_development_workflow():
     from agents import get_all_agents
     agents = get_all_agents()
+
+    def architect_node(state):
+        agent = agents["architect"]
+        chain = agent["prompt"] | agent["llm"]
+        result = chain.invoke({"requirement": state["requirement"], "spec": state["spec"]})
+        return {
+            "architecture": result.content,
+            "current_agent": "架构师",
+            "history": state["history"] + [f"架构师: {result.content}"]
+        }
 
     def product_manager_node(state):
         agent = agents["product_manager"]
@@ -28,7 +39,7 @@ def create_development_workflow():
     def developer_node(state):
         agent = agents["developer"]
         chain = agent["prompt"] | agent["llm"]
-        result = chain.invoke({"spec": state["spec"]})
+        result = chain.invoke({"spec": state["spec"], "architecture": state["architecture"]})
         return {
             "code": result.content,
             "current_agent": "开发工程师",
@@ -57,12 +68,14 @@ def create_development_workflow():
 
     workflow = StateGraph(DevelopmentState)
 
+    workflow.add_node("architect", architect_node)
     workflow.add_node("product_manager", product_manager_node)
     workflow.add_node("developer", developer_node)
     workflow.add_node("tester", tester_node)
     workflow.add_node("devops", devops_node)
 
-    workflow.add_edge("product_manager", "developer")
+    workflow.add_edge("product_manager", "architect")
+    workflow.add_edge("architect", "developer")
     workflow.add_edge("developer", "tester")
     workflow.add_edge("tester", "devops")
     workflow.add_edge("devops", END)
@@ -79,6 +92,7 @@ def run_development_workflow(requirement):
 
     initial_state = DevelopmentState(
         requirement=requirement,
+        architecture="",
         spec="",
         code="",
         test_report="",

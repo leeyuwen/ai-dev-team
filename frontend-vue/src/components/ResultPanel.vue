@@ -16,6 +16,17 @@
         </div>
       </details>
 
+      <!-- 架构设计 -->
+      <details class="group">
+        <summary class="flex items-center gap-2 cursor-pointer list-none text-white font-medium">
+          <span class="text-gray-400 group-open:text-blue-400 transition-colors">🏗️</span>
+          <span class="group-open:text-blue-400 transition-colors">架构设计文档</span>
+        </summary>
+        <div class="mt-3 p-4 bg-gray-900 rounded-lg">
+          <pre class="text-sm text-gray-300 whitespace-pre-wrap break-words font-sans">{{ architecture }}</pre>
+        </div>
+      </details>
+
       <!-- 代码实现 -->
       <details class="group">
         <summary class="flex items-center gap-2 cursor-pointer list-none text-white font-medium">
@@ -54,6 +65,7 @@
 
 <script setup lang="ts">
 defineProps<{
+  architecture: string
   spec: string
   code: string
   testReport: string

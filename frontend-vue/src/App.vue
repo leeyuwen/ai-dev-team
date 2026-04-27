@@ -13,6 +13,7 @@
       <AgentPipeline
         v-if="store.isRunning || store.currentStep !== 'idle'"
         :current-step="store.currentStep"
+        :architecture="store.architecture"
         :spec="store.spec"
         :code="store.code"
         :test-report="store.testReport"
@@ -24,6 +25,7 @@
 
       <ResultPanel
         v-if="hasContent"
+        :architecture="store.architecture"
         :spec="store.spec"
         :code="store.code"
         :test-report="store.testReport"
@@ -45,7 +47,7 @@ import ResultPanel from './components/ResultPanel.vue'
 const store = useDevelopmentStore()
 
 const hasContent = computed(() =>
-  store.spec || store.code || store.testReport || store.deploymentPlan
+  store.architecture || store.spec || store.code || store.testReport || store.deploymentPlan
 )
 
 function onSubmit(requirement: string) {
