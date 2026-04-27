@@ -122,71 +122,11 @@ async def develop_stream(request: DevelopmentRequest):
 
             yield f"event: product_manager\ndata: {json.dumps({'type': 'product_manager', 'data': spec_result.content, 'done': False}, ensure_ascii=False)}\n\n"
 
-            arch_agent = agents_dict["architect"]
-            arch_chain = arch_agent["prompt"] | arch_agent["llm"]
-            status_msg = '架构师正在设计系统架构...'
-            yield f"event: status\ndata: {json.dumps({'type': 'status', 'data': status_msg, 'done': False}, ensure_ascii=False)}\n\n"
-            log_agent_start("架构师")
+            yield f"event: await_approval\ndata: {json.dumps({'type': 'await_approval', 'data': spec_result.content, 'done': True}, ensure_ascii=False)}\n\n"
 
-            arch_result = await loop.run_in_executor(executor, lambda: arch_chain.invoke({"requirement": request.requirement, "spec": spec_result.content}))
-            log_agent_complete("架构师", arch_result.content)
-
-            yield f"event: architect\ndata: {json.dumps({'type': 'architect', 'data': arch_result.content, 'done': False}, ensure_ascii=False)}\n\n"
-
-            dev_agent = agents_dict["developer"]
-            dev_chain = dev_agent["prompt"] | dev_agent["llm"]
-            status_msg = '开发工程师正在编写代码...'
-            yield f"event: status\ndata: {json.dumps({'type': 'status', 'data': status_msg, 'done': False}, ensure_ascii=False)}\n\n"
-            log_agent_start("开发工程师")
-
-            code_result = await loop.run_in_executor(executor, lambda: dev_chain.invoke({"spec": spec_result.content, "architecture": arch_result.content}))
-            log_agent_complete("开发工程师", code_result.content)
-
-            yield f"event: developer\ndata: {json.dumps({'type': 'developer', 'data': code_result.content, 'done': False}, ensure_ascii=False)}\n\n"
-
-            test_agent = agents_dict["tester"]
-            test_chain = test_agent["prompt"] | test_agent["llm"]
-            status_msg = '测试工程师正在编写测试用例...'
-            yield f"event: status\ndata: {json.dumps({'type': 'status', 'data': status_msg, 'done': False}, ensure_ascii=False)}\n\n"
-            log_agent_start("测试工程师")
-
-            test_result = await loop.run_in_executor(executor, lambda: test_chain.invoke({"spec": spec_result.content, "code": code_result.content}))
-            log_agent_complete("测试工程师", test_result.content)
-
-            yield f"event: tester\ndata: {json.dumps({'type': 'tester', 'data': test_result.content, 'done': False}, ensure_ascii=False)}\n\n"
-
-            devops_agent = agents_dict["devops"]
-            devops_chain = devops_agent["prompt"] | devops_agent["llm"]
-            status_msg = '部署工程师正在制定部署方案...'
-            yield f"event: status\ndata: {json.dumps({'type': 'status', 'data': status_msg, 'done': False}, ensure_ascii=False)}\n\n"
-            log_agent_start("部署工程师")
-
-            deploy_result = await loop.run_in_executor(executor, lambda: devops_chain.invoke({"code": code_result.content, "test_report": test_result.content}))
-            log_agent_complete("部署工程师", deploy_result.content)
-
-            yield f"event: devops\ndata: {json.dumps({'type': 'devops', 'data': deploy_result.content, 'done': False}, ensure_ascii=False)}\n\n"
-
-            final_result = {
-                "requirement": request.requirement,
-                "architecture": arch_result.content,
-                "spec": spec_result.content,
-                "code": code_result.content,
-                "test_report": test_result.content,
-                "deployment_plan": deploy_result.content,
-                "history": [
-                    f"产品经理: {spec_result.content}",
-                    f"架构师: {arch_result.content}",
-                    f"开发工程师: {code_result.content}",
-                    f"测试工程师: {test_result.content}",
-                    f"部署工程师: {deploy_result.content}"
-                ]
-            }
-
-            yield f"event: status\ndata: {json.dumps({'type': 'status', 'data': '开发完成!', 'done': False}, ensure_ascii=False)}\n\n"
-            yield f"event: complete\ndata: {json.dumps({'type': 'complete', 'data': final_result, 'done': True}, ensure_ascii=False)}\n\n"
-
-            log_request_complete(5)
+            log_request_complete(1)
             executor.shutdown(wait=False)
+            return
 
         except ValidationError as e:
             log_agent_error("ValidationError", str(e))
@@ -200,6 +140,106 @@ async def develop_stream(request: DevelopmentRequest):
         except Exception as e:
             log_agent_error("Unknown error", str(e))
             yield f"event: error\ndata: {json.dumps({'type': 'error', 'data': f'内部服务器错误: {str(e)}', 'done': True}, ensure_ascii=False)}\n\n"
+            executor.shutdown(wait=False)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+@app.post("/approve")
+async def approve_spec(request: dict):
+    """用户确认/修改 PRD 后，继续后续 Agent 流程（Architect → Dev → Test → DevOps）"""
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+    from logger import log_agent_start, log_agent_complete, log_request_complete, log_error
+
+    session_id = request.get("session_id", "default")
+    modified_spec = request.get("spec", "")
+
+    if not session_id or not modified_spec:
+        raise HTTPException(status_code=400, detail="session_id 和 spec 为必填项")
+
+    async def event_generator():
+        loop = asyncio.get_event_loop()
+        executor = ThreadPoolExecutor(max_workers=4)
+
+        async def send_event(event_type, data, done=False):
+            yield f"event: {event_type}\ndata: {json.dumps({'type': event_type, 'data': data, 'done': done}, ensure_ascii=False)}\n\n"
+
+        try:
+            load_env()
+            from agents import get_all_agents
+            agents_dict = get_all_agents()
+
+            arch_agent = agents_dict["architect"]
+            arch_chain = arch_agent["prompt"] | arch_agent["llm"]
+            status_msg = '架构师正在设计系统架构...'
+            yield f"event: status\ndata: {json.dumps({'type': 'status', 'data': status_msg, 'done': False}, ensure_ascii=False)}\n\n"
+            log_agent_start("架构师")
+
+            arch_result = await loop.run_in_executor(executor, lambda: arch_chain.invoke({
+                "requirement": "",
+                "spec": modified_spec
+            }))
+            log_agent_complete("架构师", arch_result.content)
+
+            yield f"event: architect\ndata: {json.dumps({'type': 'architect', 'data': arch_result.content, 'done': False}, ensure_ascii=False)}\n\n"
+
+            dev_agent = agents_dict["developer"]
+            dev_chain = dev_agent["prompt"] | dev_agent["llm"]
+            status_msg = '开发工程师正在编写代码...'
+            yield f"event: status\ndata: {json.dumps({'type': 'status', 'data': status_msg, 'done': False}, ensure_ascii=False)}\n\n"
+            log_agent_start("开发工程师")
+
+            code_result = await loop.run_in_executor(executor, lambda: dev_chain.invoke({
+                "spec": modified_spec,
+                "architecture": arch_result.content
+            }))
+            log_agent_complete("开发工程师", code_result.content)
+
+            yield f"event: developer\ndata: {json.dumps({'type': 'developer', 'data': code_result.content, 'done': False}, ensure_ascii=False)}\n\n"
+
+            test_agent = agents_dict["tester"]
+            test_chain = test_agent["prompt"] | test_agent["llm"]
+            status_msg = '测试工程师正在编写测试用例...'
+            yield f"event: status\ndata: {json.dumps({'type': 'status', 'data': status_msg, 'done': False}, ensure_ascii=False)}\n\n"
+            log_agent_start("测试工程师")
+
+            test_result = await loop.run_in_executor(executor, lambda: test_chain.invoke({
+                "spec": modified_spec,
+                "code": code_result.content
+            }))
+            log_agent_complete("测试工程师", test_result.content)
+
+            yield f"event: tester\ndata: {json.dumps({'type': 'tester', 'data': test_result.content, 'done': False}, ensure_ascii=False)}\n\n"
+
+            devops_agent = agents_dict["devops"]
+            devops_chain = devops_agent["prompt"] | devops_agent["llm"]
+            status_msg = '部署工程师正在制定部署方案...'
+            yield f"event: status\ndata: {json.dumps({'type': 'status', 'data': status_msg, 'done': False}, ensure_ascii=False)}\n\n"
+            log_agent_start("部署工程师")
+
+            deploy_result = await loop.run_in_executor(executor, lambda: devops_chain.invoke({
+                "code": code_result.content,
+                "test_report": test_result.content
+            }))
+            log_agent_complete("部署工程师", deploy_result.content)
+
+            yield f"event: devops\ndata: {json.dumps({'type': 'devops', 'data': deploy_result.content, 'done': False}, ensure_ascii=False)}\n\n"
+
+            final_result = {
+                "spec": modified_spec,
+                "architecture": arch_result.content,
+                "code": code_result.content,
+                "test_report": test_result.content,
+                "deployment_plan": deploy_result.content,
+            }
+
+            yield f"event: complete\ndata: {json.dumps({'type': 'complete', 'data': final_result, 'done': True}, ensure_ascii=False)}\n\n"
+            log_request_complete(4)
+            executor.shutdown(wait=False)
+
+        except Exception as e:
+            log_error(f"Approve error: {e}", traceback.format_exc())
+            yield f"event: error\ndata: {json.dumps({'type': 'error', 'data': f'继续流程出错: {str(e)}', 'done': True}, ensure_ascii=False)}\n\n"
             executor.shutdown(wait=False)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

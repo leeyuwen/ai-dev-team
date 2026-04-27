@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { AgentStep, SSEEvent, FullResult } from '../types'
-import { createDevelopmentStream } from '../api/development'
+import { createDevelopmentStream, approveSpec } from '../api/development'
 
 export const useDevelopmentStore = defineStore('development', () => {
   const requirement = ref('')
@@ -13,13 +13,17 @@ export const useDevelopmentStore = defineStore('development', () => {
   const testReport = ref('')
   const deploymentPlan = ref('')
   const errorMessage = ref('')
-
+  // 审批流程新增
+  const awaitingApproval = ref(false)
+  const sessionId = ref('')
+  const pendingSpec = ref('')
   let abortFn: (() => void) | null = null
 
   const progress = computed(() => {
     const map: Record<AgentStep, number> = {
       idle: 0,
       pm: 20,
+      await_approval: 20,
       arch: 40,
       dev: 60,
       test: 80,
@@ -56,6 +60,12 @@ export const useDevelopmentStore = defineStore('development', () => {
           case 'product_manager':
             spec.value = event.data as string
             currentStep.value = 'pm'
+            break
+          case 'await_approval':
+            pendingSpec.value = event.data as string
+            awaitingApproval.value = true
+            isRunning.value = false
+            currentStep.value = 'await_approval'
             break
           case 'architect':
             architecture.value = event.data as string
@@ -114,6 +124,67 @@ export const useDevelopmentStore = defineStore('development', () => {
     testReport.value = ''
     deploymentPlan.value = ''
     errorMessage.value = ''
+    awaitingApproval.value = false
+    sessionId.value = ''
+    pendingSpec.value = ''
+  }
+
+  function approveSpecFlow(modifiedSpec: string) {
+    if (!sessionId.value) return
+    abortFn = approveSpec(
+      sessionId.value,
+      modifiedSpec,
+      (event: SSEEvent) => {
+        switch (event.type) {
+          case 'status':
+            if (event.data.includes('架构师')) currentStep.value = 'arch'
+            else if (event.data.includes('开发工程师')) currentStep.value = 'dev'
+            else if (event.data.includes('测试工程师')) currentStep.value = 'test'
+            else if (event.data.includes('部署工程师')) currentStep.value = 'devops'
+            break
+          case 'architect':
+            architecture.value = event.data as string
+            currentStep.value = 'arch'
+            break
+          case 'developer':
+            code.value = event.data as string
+            currentStep.value = 'dev'
+            break
+          case 'tester':
+            testReport.value = event.data as string
+            currentStep.value = 'test'
+            break
+          case 'devops':
+            deploymentPlan.value = event.data as string
+            currentStep.value = 'devops'
+            break
+          case 'complete': {
+            const result = event.data as FullResult
+            architecture.value = result.architecture
+            spec.value = result.spec
+            code.value = result.code
+            testReport.value = result.test_report
+            deploymentPlan.value = result.deployment_plan
+            currentStep.value = 'done'
+            isRunning.value = false
+            awaitingApproval.value = false
+            break
+          }
+          case 'error':
+            errorMessage.value = event.data as string
+            currentStep.value = 'error'
+            isRunning.value = false
+            awaitingApproval.value = false
+            break
+        }
+      },
+      (err: Error) => {
+        errorMessage.value = err.message
+        currentStep.value = 'error'
+        isRunning.value = false
+        awaitingApproval.value = false
+      }
+    )
   }
 
   return {
@@ -126,8 +197,12 @@ export const useDevelopmentStore = defineStore('development', () => {
     testReport,
     deploymentPlan,
     errorMessage,
+    awaitingApproval,
+    sessionId,
+    pendingSpec,
     progress,
     startDevelopment,
+    approveSpecFlow,
     cancel,
     reset,
   }

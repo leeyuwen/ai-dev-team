@@ -1,7 +1,7 @@
-export type AgentStep = 'idle' | 'pm' | 'arch' | 'dev' | 'test' | 'devops' | 'done' | 'error'
+export type AgentStep = 'idle' | 'pm' | 'arch' | 'dev' | 'test' | 'devops' | 'done' | 'error' | 'await_approval'
 
 export interface SSEEvent {
-  type: 'status' | 'product_manager' | 'architect' | 'developer' | 'tester' | 'devops' | 'complete' | 'error'
+  type: 'status' | 'product_manager' | 'architect' | 'developer' | 'tester' | 'devops' | 'complete' | 'error' | 'await_approval'
   data: string | FullResult
   done: boolean
 }

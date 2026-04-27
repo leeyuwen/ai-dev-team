@@ -32,6 +32,13 @@
         :deployment-plan="store.deploymentPlan"
         class="mt-6"
       />
+
+      <ApprovalDialog
+        :visible="store.awaitingApproval"
+        :spec="store.pendingSpec"
+        @approve="onApprove"
+        @cancel="onApprovalCancel"
+      />
     </main>
   </div>
 </template>
@@ -43,6 +50,7 @@ import TopBar from './components/TopBar.vue'
 import RequirementInput from './components/RequirementInput.vue'
 import AgentPipeline from './components/AgentPipeline.vue'
 import ResultPanel from './components/ResultPanel.vue'
+import ApprovalDialog from './components/ApprovalDialog.vue'
 
 const store = useDevelopmentStore()
 
@@ -52,5 +60,13 @@ const hasContent = computed(() =>
 
 function onSubmit(requirement: string) {
   store.startDevelopment(requirement)
+}
+
+function onApprove(modifiedSpec: string) {
+  store.approveSpecFlow(modifiedSpec)
+}
+
+function onApprovalCancel() {
+  store.reset()
 }
 </script>

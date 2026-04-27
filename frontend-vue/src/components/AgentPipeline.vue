@@ -52,7 +52,7 @@ const props = defineProps<{
 
 const progress = computed(() => {
   const map: Record<AgentStep, number> = {
-    idle: 0, pm: 25, dev: 50, test: 75, devops: 90, done: 100, error: 0
+    idle: 0, pm: 20, await_approval: 20, arch: 40, dev: 60, test: 80, devops: 90, done: 100, error: 0
   }
   return map[props.currentStep]
 })
@@ -67,14 +67,14 @@ const agents = [
 
 function getContent(key: AgentStep): string {
   const map: Record<AgentStep, string> = {
-    idle: '', pm: props.spec, arch: props.architecture, dev: props.code,
+    idle: '', pm: props.spec, await_approval: props.spec, arch: props.architecture, dev: props.code,
     test: props.testReport, devops: props.deploymentPlan, done: '', error: ''
   }
   return map[key]
 }
 
 function isDone(key: AgentStep): boolean {
-  const order: AgentStep[] = ['pm', 'arch', 'dev', 'test', 'devops', 'done']
+  const order: AgentStep[] = ['pm', 'await_approval', 'arch', 'dev', 'test', 'devops', 'done']
   const currentIdx = order.indexOf(props.currentStep)
   return order.indexOf(key) < currentIdx || props.currentStep === 'done'
 }
