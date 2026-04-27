@@ -55,10 +55,18 @@ def load_env():
 
 @app.post("/develop", response_model=DevelopmentResponse)
 async def develop(request: DevelopmentRequest):
-    try:
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+
+    async def _run():
         load_env()
-        log_request(request.requirement)
-        result = run_development_workflow(request.requirement)
+        return run_development_workflow(request.requirement)
+
+    try:
+        loop = asyncio.get_event_loop()
+        executor = ThreadPoolExecutor(max_workers=2)
+        result = await loop.run_in_executor(executor, _run)
+        executor.shutdown(wait=False)
         log_request_complete(len(result.get("history", [])))
         return DevelopmentResponse(
             requirement=result["requirement"],
@@ -83,6 +91,11 @@ async def develop(request: DevelopmentRequest):
 
 @app.post("/develop/stream")
 async def develop_stream(request: DevelopmentRequest):
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+    loop = asyncio.get_event_loop()
+    executor = ThreadPoolExecutor(max_workers=4)
+
     async def event_generator():
         load_env()
         from agents import get_all_agents
@@ -102,7 +115,7 @@ async def develop_stream(request: DevelopmentRequest):
             yield f"event: status\ndata: {json.dumps({'type': 'status', 'data': status_msg, 'done': False}, ensure_ascii=False)}\n\n"
             log_agent_start("产品经理")
 
-            spec_result = pm_chain.invoke({"requirement": request.requirement})
+            spec_result = await loop.run_in_executor(executor, lambda: pm_chain.invoke({"requirement": request.requirement}))
             log_agent_complete("产品经理", spec_result.content)
 
             yield f"event: product_manager\ndata: {json.dumps({'type': 'product_manager', 'data': spec_result.content, 'done': False}, ensure_ascii=False)}\n\n"
@@ -113,7 +126,7 @@ async def develop_stream(request: DevelopmentRequest):
             yield f"event: status\ndata: {json.dumps({'type': 'status', 'data': status_msg, 'done': False}, ensure_ascii=False)}\n\n"
             log_agent_start("开发工程师")
 
-            code_result = dev_chain.invoke({"spec": spec_result.content})
+            code_result = await loop.run_in_executor(executor, lambda: dev_chain.invoke({"spec": spec_result.content}))
             log_agent_complete("开发工程师", code_result.content)
 
             yield f"event: developer\ndata: {json.dumps({'type': 'developer', 'data': code_result.content, 'done': False}, ensure_ascii=False)}\n\n"
@@ -124,7 +137,7 @@ async def develop_stream(request: DevelopmentRequest):
             yield f"event: status\ndata: {json.dumps({'type': 'status', 'data': status_msg, 'done': False}, ensure_ascii=False)}\n\n"
             log_agent_start("测试工程师")
 
-            test_result = test_chain.invoke({"spec": spec_result.content, "code": code_result.content})
+            test_result = await loop.run_in_executor(executor, lambda: test_chain.invoke({"spec": spec_result.content, "code": code_result.content}))
             log_agent_complete("测试工程师", test_result.content)
 
             yield f"event: tester\ndata: {json.dumps({'type': 'tester', 'data': test_result.content, 'done': False}, ensure_ascii=False)}\n\n"
@@ -135,7 +148,7 @@ async def develop_stream(request: DevelopmentRequest):
             yield f"event: status\ndata: {json.dumps({'type': 'status', 'data': status_msg, 'done': False}, ensure_ascii=False)}\n\n"
             log_agent_start("部署工程师")
 
-            deploy_result = devops_chain.invoke({"code": code_result.content, "test_report": test_result.content})
+            deploy_result = await loop.run_in_executor(executor, lambda: devops_chain.invoke({"code": code_result.content, "test_report": test_result.content}))
             log_agent_complete("部署工程师", deploy_result.content)
 
             yield f"event: devops\ndata: {json.dumps({'type': 'devops', 'data': deploy_result.content, 'done': False}, ensure_ascii=False)}\n\n"
@@ -158,6 +171,7 @@ async def develop_stream(request: DevelopmentRequest):
             yield f"event: complete\ndata: {json.dumps({'type': 'complete', 'data': final_result, 'done': True}, ensure_ascii=False)}\n\n"
 
             log_request_complete(4)
+            executor.shutdown(wait=False)
 
         except ValidationError as e:
             log_agent_error("ValidationError", str(e))
@@ -171,6 +185,7 @@ async def develop_stream(request: DevelopmentRequest):
         except Exception as e:
             log_agent_error("Unknown error", str(e))
             yield f"event: error\ndata: {json.dumps({'type': 'error', 'data': f'内部服务器错误: {str(e)}', 'done': True}, ensure_ascii=False)}\n\n"
+            executor.shutdown(wait=False)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
