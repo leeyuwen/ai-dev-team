@@ -58,17 +58,30 @@ def extract_trigger(description: str) -> str:
 
 
 def get_skill(name: str) -> Optional[dict]:
-    """Get a skill by directory name."""
-    skill_dir = SKILLS_DIR / name
+    """
+    Get a skill by directory name or by 'superpowers/xxx' format.
+    Supports both:
+      - get_skill("webapp-testing")       → directory name
+      - get_skill("superpowers/tdd")       → superpowers/skill-name format
+    """
+    # Handle superpowers/xxx format
+    if name.startswith("superpowers/"):
+        skill_short_name = name[len("superpowers/"):]
+        # Map to directory name: superpowers/tdd → superpowers-test-driven-development
+        dir_name = f"superpowers-{skill_short_name}"
+        skill_dir = SKILLS_DIR / dir_name
+    else:
+        skill_dir = SKILLS_DIR / name
+
     if not skill_dir.exists():
         return None
-    
+
     skill_md = skill_dir / "SKILL.md"
     if not skill_md.exists():
         return None
-    
+
     content = skill_md.read_text(encoding="utf-8")
-    
+
     return {
         "name": name,
         "content": content,
@@ -146,8 +159,9 @@ def get_skills_for_task(task_description: str) -> list[str]:
     """
     task_lower = task_description.lower()
     skill_map = {
+        # anthropics/skills
         "webapp-testing": ["web", "test", "browser", "playwright", "frontend", "ui", "自动化测试"],
-        "docx": ["word", "docx", "文档", "报告", "报告", "letter", "memo"],
+        "docx": ["word", "docx", "文档", "报告", "letter", "memo"],
         "xlsx": ["excel", "xlsx", "spreadsheet", "表格", "财务", "数据"],
         "pdf": ["pdf", "表单", "form"],
         "pptx": ["ppt", "powerpoint", "演示", "slides"],
@@ -156,8 +170,22 @@ def get_skills_for_task(task_description: str) -> list[str]:
         "skill-creator": ["skill", "agent", "create"],
         "web-artifacts-builder": ["react", "artifact", "component", "shadcn"],
         "algorithmic-art": ["art", "generative", "visual"],
+        # superpowers skills (prefixed with superpowers/)
+        "superpowers/test-driven-development": ["tdd", "test first", "red green", "测试驱动"],
+        "superpowers/systematic-debugging": ["debug", "bug", "fix", "错误", "调试", "排查"],
+        "superpowers/verification-before-completion": ["verify", "test", "complete", "验证", "完成前"],
+        "superpowers/subagent-driven-development": ["subagent", "parallel", "delegate", "子代理", "并发"],
+        "superpowers/brainstorming": ["brainstorm", "design", "discuss", "讨论", "设计"],
+        "superpowers/writing-plans": ["plan", "implement", "step", "计划", "实施"],
+        "superpowers/dispatching-parallel-agents": ["parallel", "concurrent", "dispatch", "并发", "多任务"],
+        "superpowers/receiving-code-review": ["review", "feedback", "code review", "reviewer", "评审"],
+        "superpowers/requesting-code-review": ["review", "request review", "评审"],
+        "superpowers/writing-skills": ["skill", "write skill", "create skill"],
+        "superpowers/finishing-a-development-branch": ["merge", "pr", "branch", "finish", "合并"],
+        "superpowers/using-git-worktrees": ["git", "worktree", "branch", "分支"],
+        "superpowers/using-superpowers": ["superpowers", "skill system"],
     }
-    
+
     matched = []
     for skill_name, keywords in skill_map.items():
         if any(kw in task_lower for kw in keywords):

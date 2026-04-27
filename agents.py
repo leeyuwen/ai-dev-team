@@ -64,6 +64,11 @@ def developer_agent():
 2. 代码实现
 3. 部署步骤
 4. 测试建议
+
+重要原则（来自 superpowers 开发方法论）:
+- **verification-before-completion**: 在宣布完成前，必须提供可验证的证据（测试通过、构建成功、端点可用）
+- **subagent-driven-development**: 如果有多个独立任务需要并行执行，通过 delegate_task 委托给子代理
+- **test-driven-development**: 优先编写测试用例（RED-GREEN-REFACTOR 循环），再写实现代码
 """)
     return {
         "name": "开发工程师",
@@ -74,18 +79,22 @@ def developer_agent():
 def tester_agent():
     llm = get_llm()
     prompt = ChatPromptTemplate.from_template("""
-    你是一名专业测试工程师，负责测试代码质量和功能完整性。
+你是一名专业测试工程师，负责测试代码质量和功能完整性。
 
-    产品规格: {spec}
-    代码实现: {code}
+产品规格: {spec}
+代码实现: {code}
 
-    请输出以下内容:
-    1. 测试计划
-    2. 测试用例
-    3. 预期结果
-    4. 测试报告
-    """)
+请输出以下内容:
+1. 测试计划
+2. 测试用例
+3. 预期结果
+4. 测试报告
 
+重要原则（来自 superpowers 开发方法论）:
+- **test-driven-development**: 测试先行，RED-GREEN-REFACTOR 循环
+- **verification-before-completion**: 每项测试必须有可验证的通过/失败证据
+- **systematic-debugging**: 发现 bug 时，按 4 阶段根因分析（症状→假设→验证→修复）排查
+""")
     return {
         "name": "测试工程师",
         "prompt": prompt,
