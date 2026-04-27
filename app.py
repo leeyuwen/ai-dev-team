@@ -3,9 +3,10 @@ from fastapi.responses import StreamingResponse, HTMLResponse
 from pydantic import BaseModel, ValidationError
 from pydantic_core import PydanticCustomError
 from workflow import run_development_workflow, create_development_workflow
+import logger
 from logger import (
     log_request, log_agent_start, log_agent_complete,
-    log_agent_error, log_request_complete, log_error, get_recent_logs
+    log_agent_error, log_request_complete, log_error, log_llm_call, get_recent_logs
 )
 import traceback
 import json
@@ -67,39 +68,58 @@ def load_env():
 @app.post("/prd", response_model=PRDResponse)
 async def generate_prd(request: PRDRequest):
     """仅运行产品经理 Agent，生成 PRD 规格文档，不继续后续流程。"""
-    import asyncio
+    import asyncio, time, uuid
     from concurrent.futures import ThreadPoolExecutor
-    from logger import log_agent_start, log_agent_complete, log_request_complete, log_error
+
+    request_id = str(uuid.uuid4())[:8]
+    logger.logger.info(f"[{request_id}] PRD 请求开始 | 需求: {request.requirement[:50]}...")
 
     def _run():
+        t0 = time.time()
         load_env()
         from agents import get_all_agents
+        from config import Settings
+        s = Settings()
+        model_name = getattr(s, 'minimax_model', 'minimax')
+
         agents_dict = get_all_agents()
         pm_agent = agents_dict["product_manager"]
         pm_chain = pm_agent["prompt"] | pm_agent["llm"]
-        log_agent_start("产品经理")
+
+        logger.logger.info(f"[{request_id}] [产品经理] 初始化完成，准备调用 LLM")
+        log_agent_start(f"产品经理 [{request_id}]")
+
         result = pm_chain.invoke({"requirement": request.requirement})
-        log_agent_complete("产品经理", result.content)
-        return {"spec": result.content, "requirement": request.requirement}
+        elapsed = int((time.time() - t0) * 1000)
+
+        content = result.content if hasattr(result, 'content') else str(result)
+        log_agent_complete(f"产品经理 [{request_id}]", content)
+        log_llm_call(f"产品经理 [{request_id}]", model_name, elapsed, status="OK")
+
+        logger.logger.info(f"[{request_id}] PRD 生成完成，耗时 {elapsed}ms")
+        return {"spec": content, "requirement": request.requirement}
 
     try:
         loop = asyncio.get_event_loop()
         executor = ThreadPoolExecutor(max_workers=2)
         result = await loop.run_in_executor(executor, _run)
         executor.shutdown(wait=False)
+
+        logger.logger.info(f"[{request_id}] PRD 请求完成")
         log_request_complete(1)
         return PRDResponse(spec=result["spec"], requirement=result["requirement"])
+
     except ValidationError as e:
-        log_error(f"ValidationError: {e}", traceback.format_exc())
+        log_agent_error(f"产品经理 [{request_id}]", f"ValidationError: {e}", traceback.format_exc())
         raise HTTPException(status_code=422, detail=f"请求数据验证失败: {e}")
     except TimeoutError as e:
-        log_error(f"TimeoutError: {e}", traceback.format_exc())
+        log_agent_error(f"产品经理 [{request_id}]", f"TimeoutError: {e}", traceback.format_exc())
         raise HTTPException(status_code=408, detail="请求超时，请稍后重试")
     except ConnectionError as e:
-        log_error(f"ConnectionError: {e}", traceback.format_exc())
+        log_agent_error(f"产品经理 [{request_id}]", f"ConnectionError: {e}", traceback.format_exc())
         raise HTTPException(status_code=503, detail="外部服务连接失败")
     except Exception as e:
-        log_error(f"Unknown error: {e}", traceback.format_exc())
+        log_agent_error(f"产品经理 [{request_id}]", f"Unknown error: {e}", traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"内部服务器错误: {str(e)}")
 
 
