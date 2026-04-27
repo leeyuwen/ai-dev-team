@@ -1,5 +1,15 @@
 import type { SSEEvent, FullResult } from '../types'
 
+export async function generatePrd(requirement: string): Promise<{ spec: string }> {
+  const res = await fetch('/prd', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requirement }),
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return res.json()
+}
+
 export function approveSpec(
   sessionId: string,
   spec: string,

@@ -33,6 +33,15 @@ async def serve_vue_assets(path: str):
         raise HTTPException(status_code=404, detail="Not found")
     return FileResponse(file_path)
 
+class PRDRequest(BaseModel):
+    requirement: str
+
+
+class PRDResponse(BaseModel):
+    spec: str
+    requirement: str
+
+
 class DevelopmentRequest(BaseModel):
     requirement: str
 
@@ -53,6 +62,46 @@ def load_env():
     if s.ai_provider == "minimax" and s.minimax_api_key:
         os.environ["MINIMAX_API_KEY"] = s.minimax_api_key
     return s
+
+
+@app.post("/prd", response_model=PRDResponse)
+async def generate_prd(request: PRDRequest):
+    """仅运行产品经理 Agent，生成 PRD 规格文档，不继续后续流程。"""
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+    from logger import log_agent_start, log_agent_complete, log_request_complete, log_error
+
+    def _run():
+        load_env()
+        from agents import get_all_agents
+        agents_dict = get_all_agents()
+        pm_agent = agents_dict["product_manager"]
+        pm_chain = pm_agent["prompt"] | pm_agent["llm"]
+        log_agent_start("产品经理")
+        result = pm_chain.invoke({"requirement": request.requirement})
+        log_agent_complete("产品经理", result.content)
+        return {"spec": result.content, "requirement": request.requirement}
+
+    try:
+        loop = asyncio.get_event_loop()
+        executor = ThreadPoolExecutor(max_workers=2)
+        result = await loop.run_in_executor(executor, _run)
+        executor.shutdown(wait=False)
+        log_request_complete(1)
+        return PRDResponse(spec=result["spec"], requirement=result["requirement"])
+    except ValidationError as e:
+        log_error(f"ValidationError: {e}", traceback.format_exc())
+        raise HTTPException(status_code=422, detail=f"请求数据验证失败: {e}")
+    except TimeoutError as e:
+        log_error(f"TimeoutError: {e}", traceback.format_exc())
+        raise HTTPException(status_code=408, detail="请求超时，请稍后重试")
+    except ConnectionError as e:
+        log_error(f"ConnectionError: {e}", traceback.format_exc())
+        raise HTTPException(status_code=503, detail="外部服务连接失败")
+    except Exception as e:
+        log_error(f"Unknown error: {e}", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"内部服务器错误: {str(e)}")
+
 
 @app.post("/develop", response_model=DevelopmentResponse)
 async def develop(request: DevelopmentRequest):

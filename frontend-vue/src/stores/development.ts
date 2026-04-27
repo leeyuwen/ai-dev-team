@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { AgentStep, SSEEvent, FullResult } from '../types'
-import { createDevelopmentStream, approveSpec } from '../api/development'
+import { createDevelopmentStream, approveSpec, generatePrd } from '../api/development'
 
 export const useDevelopmentStore = defineStore('development', () => {
   const requirement = ref('')
@@ -17,6 +17,9 @@ export const useDevelopmentStore = defineStore('development', () => {
   const awaitingApproval = ref(false)
   const sessionId = ref('')
   const pendingSpec = ref('')
+  // 仅生成 PRD 模式
+  const prdOnlyMode = ref(false)
+  const prdLoading = ref(false)
   let abortFn: (() => void) | null = null
 
   const progress = computed(() => {
@@ -127,6 +130,31 @@ export const useDevelopmentStore = defineStore('development', () => {
     awaitingApproval.value = false
     sessionId.value = ''
     pendingSpec.value = ''
+    prdOnlyMode.value = false
+    prdLoading.value = false
+  }
+
+  async function generatePrdOnly(req: string) {
+    if (isRunning.value) return
+    requirement.value = req
+    isRunning.value = true
+    prdOnlyMode.value = true
+    prdLoading.value = true
+    errorMessage.value = ''
+
+    try {
+      const result = await generatePrd(req)
+      spec.value = result.spec
+      code.value = ''
+      testReport.value = ''
+      deploymentPlan.value = ''
+      architecture.value = ''
+    } catch (err: any) {
+      errorMessage.value = err.message || 'PRD 生成失败'
+    } finally {
+      isRunning.value = false
+      prdLoading.value = false
+    }
   }
 
   function approveSpecFlow(modifiedSpec: string) {
@@ -200,8 +228,11 @@ export const useDevelopmentStore = defineStore('development', () => {
     awaitingApproval,
     sessionId,
     pendingSpec,
+    prdOnlyMode,
+    prdLoading,
     progress,
     startDevelopment,
+    generatePrdOnly,
     approveSpecFlow,
     cancel,
     reset,

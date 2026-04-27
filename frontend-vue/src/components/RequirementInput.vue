@@ -6,11 +6,11 @@
       rows="4"
       placeholder="请详细描述您的项目需求，例如：创建一个基于 FastAPI 的用户管理系统..."
       :disabled="disabled"
-      @keydown.ctrl.enter="submit"
-      @keydown.meta.enter="submit"
+      @keydown.ctrl.enter="submitFull"
+      @keydown.meta.enter="submitFull"
     />
     <div class="flex items-center justify-between mt-4">
-      <span class="text-xs text-gray-500">Ctrl+Enter 提交</span>
+      <span class="text-xs text-gray-500">Ctrl+Enter 提交完整流程</span>
       <div class="flex gap-3">
         <button
           v-if="showReset"
@@ -18,6 +18,14 @@
           class="px-4 py-2 text-gray-400 hover:text-white transition-colors"
         >
           🔄 重置
+        </button>
+        <button
+          @click="$emit('prd-only', input)"
+          :disabled="disabled || !input.trim()"
+          class="px-5 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center gap-2"
+        >
+          <span v-if="prdLoading">⏳ 生成中...</span>
+          <span v-else>📋 仅生成 PRD</span>
         </button>
         <button
           @click="$emit('submit', input)"
@@ -38,16 +46,18 @@ import { ref } from 'vue'
 const props = defineProps<{
   disabled: boolean
   showReset?: boolean
+  prdLoading?: boolean
 }>()
 
 const emit = defineEmits<{
   submit: [requirement: string]
+  'prd-only': [requirement: string]
   reset: []
 }>()
 
 const input = ref('')
 
-function submit() {
+function submitFull() {
   if (!input.value.trim() || props.disabled) return
   emit('submit', input.value.trim())
 }

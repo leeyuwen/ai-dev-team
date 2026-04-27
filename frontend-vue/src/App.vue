@@ -6,7 +6,9 @@
       <RequirementInput
         :disabled="store.isRunning"
         :show-reset="hasContent"
+        :prd-loading="store.prdLoading"
         @submit="onSubmit"
+        @prd-only="onPrdOnly"
         @reset="store.reset()"
       />
 
@@ -64,6 +66,10 @@ function onSubmit(requirement: string) {
 
 function onApprove(modifiedSpec: string) {
   store.approveSpecFlow(modifiedSpec)
+}
+
+function onPrdOnly(requirement: string) {
+  store.generatePrdOnly(requirement)
 }
 
 function onApprovalCancel() {
