@@ -1,7 +1,6 @@
 from typing import TypedDict, List
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
-from agents import get_all_agents
 
 class DevelopmentState(TypedDict):
     requirement: str
@@ -13,6 +12,7 @@ class DevelopmentState(TypedDict):
     history: List[str]
 
 def create_development_workflow():
+    from agents import get_all_agents
     agents = get_all_agents()
 
     def product_manager_node(state):

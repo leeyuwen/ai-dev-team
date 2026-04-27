@@ -44,9 +44,19 @@ class DevelopmentResponse(BaseModel):
     deployment_plan: str
     history: list
 
+def load_env():
+    """Force reload .env file into os.environ before each request."""
+    from config import Settings
+    s = Settings()
+    import os
+    if s.ai_provider == "minimax" and s.minimax_api_key:
+        os.environ["MINIMAX_API_KEY"] = s.minimax_api_key
+    return s
+
 @app.post("/develop", response_model=DevelopmentResponse)
 async def develop(request: DevelopmentRequest):
     try:
+        load_env()
         log_request(request.requirement)
         result = run_development_workflow(request.requirement)
         log_request_complete(len(result.get("history", [])))
@@ -74,6 +84,7 @@ async def develop(request: DevelopmentRequest):
 @app.post("/develop/stream")
 async def develop_stream(request: DevelopmentRequest):
     async def event_generator():
+        load_env()
         from agents import get_all_agents
 
         agents_dict = get_all_agents()
@@ -177,4 +188,4 @@ def root():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000, timeout_keep_alive=600)

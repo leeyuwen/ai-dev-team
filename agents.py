@@ -1,8 +1,8 @@
 from langchain_core.prompts import ChatPromptTemplate
 from config import create_llm
 
-def get_llm():
-    return create_llm()
+def get_llm(provider=None):
+    return create_llm(provider)
 
 def product_manager_agent():
     llm = get_llm()
