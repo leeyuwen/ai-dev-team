@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, HTMLResponse
 from pydantic import BaseModel, ValidationError
 from pydantic_core import PydanticCustomError
 from workflow import run_development_workflow, create_development_workflow
@@ -9,11 +9,26 @@ from logger import (
 )
 import traceback
 import json
+import os
 
-app = FastAPI(
-    title="AI 开发团队",
-    version="1.0.0"
-)
+app = FastAPI(title="AI 开发团队", version="1.0.0")
+
+# Vue SPA dist — served at /app/, assets at /app/assets/
+DIST_DIR = os.path.join(os.path.dirname(__file__), "frontend-vue", "dist")
+
+
+@app.get("/app/")
+async def serve_vue_app():
+    path = os.path.join(DIST_DIR, "index.html")
+    with open(path, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read())
+
+
+@app.get("/app/assets/{path:path}")
+async def serve_vue_assets(path: str):
+    from starlette.staticfiles import StaticFiles
+    assets_dir = os.path.join(DIST_DIR, "assets")
+    return StaticFiles(directory=assets_dir)(None, path)
 
 class DevelopmentRequest(BaseModel):
     requirement: str

@@ -1,3 +1,7 @@
+# Frontend
+frontend-vue/node_modules/
+frontend-vue/dist/
+
 # Environment
 .env
 .env.local
