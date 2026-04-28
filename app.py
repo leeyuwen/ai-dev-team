@@ -101,47 +101,53 @@ async def develop(request: DevelopmentRequest):
 @app.post("/develop/stream")
 async def develop_stream(request: DevelopmentRequest):
     """
-    流式开发流程：仅运行 PM 阶段，yield spec 后等待用户 approval。
-    前端收到 project_id 后调用 /approve 继续后续流程。
+    流式开发流程：PM 阶段逐 token 流式返回，用户实时看到 PRD 生成过程。
+    完成 后等待用户 approval 继续后续 Agent 流程。
     """
     load_env()
-    from agents import get_all_agents
     from skill_manager import build_skill_context
-    from logger import log_agent_start, log_agent_complete, log_request_complete
+    from services.workflow import stream_pm_only
 
     async def event_generator():
         try:
-            agents = get_all_agents()
-            skill_context = build_skill_context(request.requirement)
-            pm_agent = agents["product_manager"]
-            pm_chain = pm_agent["prompt"] | pm_agent["llm"]
-
-            yield f"event: status\ndata: {json.dumps({'type': 'status', 'data': '产品经理正在分析需求...', 'done': False}, ensure_ascii=False)}\n\n"
-
-            log_agent_start("产品经理")
-
             import asyncio
             from concurrent.futures import ThreadPoolExecutor
             loop = asyncio.get_event_loop()
             executor = ThreadPoolExecutor(max_workers=2)
 
-            spec_result = await loop.run_in_executor(
-                executor,
-                lambda: pm_chain.invoke({"requirement": request.requirement}),
-            )
+            skill_context = build_skill_context(request.requirement)
+
+            yield f"event: status\ndata: {json.dumps({'type': 'status', 'data': '产品经理正在分析需求...', 'done': False}, ensure_ascii=False)}\n\n"
+
+            # 在线程池中运行流式 PM generator
+            stream_gen = stream_pm_only(request.requirement)
+
+            spec_text = ""
+            project_id = ""
+            project_name = ""
+
+            while True:
+                try:
+                    token, is_done, result = await loop.run_in_executor(
+                        executor, lambda: next(stream_gen)
+                    )
+                except StopIteration:
+                    break
+
+                if is_done:
+                    if result:
+                        project_id = result.get("project_id", "")
+                        project_name = result.get("name", "")
+                    break
+
+                spec_text += token
+                # 推送每个 token，前端可实时追加显示
+                yield f"event: pm_token\ndata: {json.dumps({'type': 'pm_token', 'token': token, 'done': False}, ensure_ascii=False)}\n\n"
+
             executor.shutdown(wait=False)
 
-            spec = spec_result.content if hasattr(spec_result, "content") else str(spec_result)
-            log_agent_complete("产品经理", spec)
-
-            # 创建项目记录
-            project = project_store.create_project(request.requirement, agents=["产品经理"])
-            project_store.update_project(project["id"], spec=spec, status="draft")
-
-            yield f"event: product_manager\ndata: {json.dumps({'type': 'product_manager', 'data': spec, 'project_id': project['id'], 'name': project['name'], 'done': False}, ensure_ascii=False)}\n\n"
-            yield f"event: await_approval\ndata: {json.dumps({'type': 'await_approval', 'data': spec, 'project_id': project['id'], 'name': project['name'], 'skill_context': skill_context, 'done': True}, ensure_ascii=False)}\n\n"
-
-            log_request_complete(1)
+            yield f"event: product_manager\ndata: {json.dumps({'type': 'product_manager', 'data': spec_text, 'project_id': project_id, 'name': project_name, 'done': False}, ensure_ascii=False)}\n\n"
+            yield f"event: await_approval\ndata: {json.dumps({'type': 'await_approval', 'data': spec_text, 'project_id': project_id, 'name': project_name, 'skill_context': skill_context, 'done': True}, ensure_ascii=False)}\n\n"
 
         except Exception as e:
             log_agent_error("PM 阶段", str(e), traceback.format_exc())

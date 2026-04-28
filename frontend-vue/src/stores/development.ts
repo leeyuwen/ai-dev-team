@@ -15,7 +15,7 @@ export const useDevelopmentStore = defineStore('development', () => {
   const errorMessage = ref('')
   // 审批流程新增
   const awaitingApproval = ref(false)
-  const sessionId = ref('')
+  const pendingProjectId = ref('')
   const pendingSpec = ref('')
   const skillContext = ref('')
   // 仅生成 PRD 模式
@@ -65,8 +65,16 @@ export const useDevelopmentStore = defineStore('development', () => {
             spec.value = event.data as string
             currentStep.value = 'pm'
             break
+          case 'pm_token':
+            // 逐 token 追加到 spec，前端实时看到 PRD 生成过程
+            spec.value += event.token ?? ''
+            pendingSpec.value = spec.value
+            break
           case 'await_approval':
             pendingSpec.value = event.data as string
+            if ((event as any).project_id) {
+              pendingProjectId.value = (event as any).project_id as string
+            }
             if ((event as any).skill_context) {
               skillContext.value = (event as any).skill_context as string
             }
@@ -132,7 +140,7 @@ export const useDevelopmentStore = defineStore('development', () => {
     deploymentPlan.value = ''
     errorMessage.value = ''
     awaitingApproval.value = false
-    sessionId.value = ''
+    pendingProjectId.value = ''
     pendingSpec.value = ''
     prdOnlyMode.value = false
     prdLoading.value = false
@@ -162,9 +170,9 @@ export const useDevelopmentStore = defineStore('development', () => {
   }
 
   function approveSpecFlow(modifiedSpec: string) {
-    if (!sessionId.value) return
+    if (!pendingProjectId.value) return
     abortFn = approveSpec(
-      sessionId.value,
+      pendingProjectId.value,
       modifiedSpec,
       skillContext.value,
       (event: SSEEvent) => {
@@ -231,7 +239,7 @@ export const useDevelopmentStore = defineStore('development', () => {
     deploymentPlan,
     errorMessage,
     awaitingApproval,
-    sessionId,
+    pendingProjectId,
     pendingSpec,
     prdOnlyMode,
     prdLoading,

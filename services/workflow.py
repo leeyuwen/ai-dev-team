@@ -52,7 +52,44 @@ def _call_agent(chain, inputs: dict, agent_name: str, model_name: str):
     return content
 
 
-# ── PM 阶段（第一步）──────────────────────────────────────────────────────────
+# ── PM 阶段（流式，逐 token yield）──────────────────────────────────────────
+
+def stream_pm_only(requirement: str):
+    """
+    流式运行产品经理 Agent，逐 token yield。
+    Yields: (token: str, is_done: bool, result: dict)
+      - token: 每个 LLM token
+      - is_done True 时，result 包含 {"spec": ..., "project_id": ..., "name": ...}
+    """
+    from services.project import svc
+
+    request_id = str(uuid.uuid4())[:8]
+    agents, model_name = _load_env_and_agents()
+
+    project = svc.create(requirement, agents=["产品经理"])
+    pid = project["id"]
+
+    log_agent_start(f"产品经理 [{request_id}]")
+    pm_agent = agents["product_manager"]
+    pm_chain = pm_agent["prompt"] | pm_agent["llm"]
+
+    spec = ""
+    t0 = time.time()
+    for chunk in pm_chain.stream({"requirement": requirement}):
+        token = chunk.content if hasattr(chunk, "content") else ""
+        spec += token
+        yield token, False, None
+
+    elapsed = int((time.time() - t0) * 1000)
+    log_agent_complete(f"产品经理 [{request_id}]", spec)
+    log_llm_call(f"产品经理 [{request_id}]", model_name, elapsed, status="OK")
+
+    svc.update(pid, spec=spec, status="draft")
+    result = {"spec": spec, "project_id": pid, "name": project["name"]}
+    yield "", True, result
+
+
+# ── PM 阶段（非流式，同步返回）───────────────────────────────────────────────
 
 def run_pm_only(requirement: str) -> dict:
     """
