@@ -58,5 +58,5 @@ generated_project/DEPLOYMENT.md
 generated_project/SPEC.md
 generated_project/TEST_REPORT.md
 
-# Keep these source files
-!generated_project/README.md
+# Workspace — generated project outputs (backed up separately via hermes-backup)
+workspace/

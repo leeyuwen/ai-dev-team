@@ -8,11 +8,15 @@ from logger import (
     log_request, log_agent_start, log_agent_complete,
     log_agent_error, log_request_complete, log_error, log_llm_call, get_recent_logs
 )
+import project_store
 import traceback
 import json
 import os
 
 app = FastAPI(title="AI 开发团队", version="1.0.0")
+
+# Initialize project storage on startup
+project_store.init()
 
 # Vue SPA dist — served at /app/, assets at /app/assets/
 DIST_DIR = os.path.join(os.path.dirname(__file__), "frontend-vue", "dist")
@@ -39,6 +43,8 @@ class PRDRequest(BaseModel):
 
 
 class PRDResponse(BaseModel):
+    project_id: str
+    name: str
     spec: str
     requirement: str
 
@@ -47,6 +53,8 @@ class DevelopmentRequest(BaseModel):
     requirement: str
 
 class DevelopmentResponse(BaseModel):
+    project_id: str
+    name: str
     requirement: str
     architecture: str
     spec: str
@@ -74,6 +82,9 @@ async def generate_prd(request: PRDRequest):
     request_id = str(uuid.uuid4())[:8]
     logger.logger.info(f"[{request_id}] PRD 请求开始 | 需求: {request.requirement[:50]}...")
 
+    # 创建项目记录
+    project = project_store.create_project(request.requirement, agents=["产品经理"])
+
     def _run():
         t0 = time.time()
         load_env()
@@ -97,7 +108,7 @@ async def generate_prd(request: PRDRequest):
         log_llm_call(f"产品经理 [{request_id}]", model_name, elapsed, status="OK")
 
         logger.logger.info(f"[{request_id}] PRD 生成完成，耗时 {elapsed}ms")
-        return {"spec": content, "requirement": request.requirement}
+        return {"spec": content, "requirement": request.requirement, "project_id": project["id"]}
 
     try:
         loop = asyncio.get_event_loop()
@@ -105,9 +116,11 @@ async def generate_prd(request: PRDRequest):
         result = await loop.run_in_executor(executor, _run)
         executor.shutdown(wait=False)
 
+        # 持久化 spec 到数据库
+        project_store.update_project(project["id"], spec=result["spec"], status="draft")
         logger.logger.info(f"[{request_id}] PRD 请求完成")
         log_request_complete(1)
-        return PRDResponse(spec=result["spec"], requirement=result["requirement"])
+        return PRDResponse(project_id=project["id"], name=project["name"], spec=result["spec"], requirement=result["requirement"])
 
     except ValidationError as e:
         log_agent_error(f"产品经理 [{request_id}]", f"ValidationError: {e}", traceback.format_exc())
@@ -128,6 +141,9 @@ async def develop(request: DevelopmentRequest):
     import asyncio
     from concurrent.futures import ThreadPoolExecutor
 
+    # 创建项目并关联需求
+    project = project_store.create_project(request.requirement, agents=["产品经理", "架构师", "开发工程师", "测试工程师", "部署工程师"])
+
     async def _run():
         load_env()
         return run_development_workflow(request.requirement)
@@ -137,8 +153,23 @@ async def develop(request: DevelopmentRequest):
         executor = ThreadPoolExecutor(max_workers=2)
         result = await loop.run_in_executor(executor, _run)
         executor.shutdown(wait=False)
+
+        # 持久化所有产出到数据库
+        project_store.update_project(project["id"],
+            spec=result.get("spec", ""),
+            architecture=result.get("architecture", ""),
+            test_report=result.get("test_report", ""),
+            deployment_plan=result.get("deployment_plan", ""),
+            status="coding",
+        )
+        # 保存代码到文件系统
+        if result.get("code"):
+            project_store.save_code(project["id"], result["code"])
+
         log_request_complete(len(result.get("history", [])))
         return DevelopmentResponse(
+            project_id=project["id"],
+            name=project["name"],
             requirement=result["requirement"],
             architecture=result.get("architecture", ""),
             spec=result["spec"],
@@ -191,9 +222,13 @@ async def develop_stream(request: DevelopmentRequest):
             spec_result = await loop.run_in_executor(executor, lambda: pm_chain.invoke({"requirement": request.requirement}))
             log_agent_complete("产品经理", spec_result.content)
 
-            yield f"event: product_manager\ndata: {json.dumps({'type': 'product_manager', 'data': spec_result.content, 'done': False}, ensure_ascii=False)}\n\n"
+            # 持久化 spec 到数据库
+            project = project_store.create_project(request.requirement, agents=["产品经理"])
+            project_store.update_project(project["id"], spec=spec_result.content, status="draft")
 
-            yield f"event: await_approval\ndata: {json.dumps({'type': 'await_approval', 'data': spec_result.content, 'skill_context': skill_context, 'done': True}, ensure_ascii=False)}\n\n"
+            yield f"event: product_manager\ndata: {json.dumps({'type': 'product_manager', 'data': spec_result.content, 'project_id': project['id'], 'name': project['name'], 'done': False}, ensure_ascii=False)}\n\n"
+
+            yield f"event: await_approval\ndata: {json.dumps({'type': 'await_approval', 'data': spec_result.content, 'project_id': project['id'], 'name': project['name'], 'skill_context': skill_context, 'done': True}, ensure_ascii=False)}\n\n"
 
             log_request_complete(1)
             executor.shutdown(wait=False)
@@ -217,17 +252,27 @@ async def develop_stream(request: DevelopmentRequest):
 
 @app.post("/approve")
 async def approve_spec(request: dict):
-    """用户确认/修改 PRD 后，继续后续 Agent 流程（Architect → Dev → Test → DevOps）"""
+    """
+    用户确认/修改 PRD 后，继续后续 Agent 流程（Architect → Dev → Test → DevOps）。
+    request: { "project_id": "...", "spec": "...", "skill_context": "..." }
+    """
     import asyncio
     from concurrent.futures import ThreadPoolExecutor
     from logger import log_agent_start, log_agent_complete, log_request_complete, log_error
 
-    session_id = request.get("session_id", "default")
+    project_id   = request.get("project_id", "")
     modified_spec = request.get("spec", "")
     skill_context = request.get("skill_context", "")
 
-    if not session_id or not modified_spec:
-        raise HTTPException(status_code=400, detail="session_id 和 spec 为必填项")
+    if not project_id or not modified_spec:
+        raise HTTPException(status_code=400, detail="project_id 和 spec 为必填项")
+
+    proj = project_store.get_project(project_id)
+    if not proj:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    # 更新 spec 并标记为 approved
+    project_store.update_project(project_id, spec=modified_spec, status="approved")
 
     async def event_generator():
         loop = asyncio.get_event_loop()
@@ -306,6 +351,17 @@ async def approve_spec(request: dict):
                 "deployment_plan": deploy_result.content,
             }
 
+            # 持久化所有产出
+            project_store.update_project(project_id,
+                architecture=arch_result.content,
+                code=code_result.content,
+                test_report=test_result.content,
+                deployment_plan=deploy_result.content,
+                status="coding",
+            )
+            if code_result.content:
+                project_store.save_code(project_id, code_result.content)
+
             yield f"event: complete\ndata: {json.dumps({'type': 'complete', 'data': final_result, 'done': True}, ensure_ascii=False)}\n\n"
             log_request_complete(4)
             executor.shutdown(wait=False)
@@ -327,6 +383,55 @@ async def list_skills():
     from skill_manager import list_skills, get_skills_for_task
     skills = list_skills()
     return {"skills": skills}
+
+
+# ── Project storage endpoints ─────────────────────────────────────────────────
+
+@app.get("/projects", response_model=list)
+async def list_projects(limit: int = 50, offset: int = 0):
+    """列出所有项目（按创建时间倒序）"""
+    return project_store.list_projects(limit=limit, offset=offset)
+
+
+@app.get("/projects/{pid}")
+async def get_project(pid: str):
+    """获取单个项目详情（含元信息，不含 code）"""
+    proj = project_store.get_project(pid)
+    if not proj:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    return proj
+
+
+@app.get("/projects/{pid}/code")
+async def get_project_code(pid: str):
+    """获取项目生成的代码内容"""
+    code_path = project_store.get_code_path(pid)
+    if not code_path:
+        raise HTTPException(status_code=404, detail="代码文件不存在")
+    if not os.path.exists(code_path):
+        raise HTTPException(status_code=404, detail="代码文件丢失")
+    with open(code_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    return {"project_id": pid, "code": content, "path": code_path}
+
+
+@app.post("/projects/{pid}/approve")
+async def approve_and_continue(pid: str, request: dict):
+    """
+    用户确认 PRD 后，更新 spec 并继续后续 Agent 流程。
+    request: { "spec": "...", "skill_context": "..." }
+    """
+    proj = project_store.get_project(pid)
+    if not proj:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    modified_spec = request.get("spec", "")
+    skill_context = request.get("skill_context", "")
+
+    # 更新 spec 和状态
+    project_store.update_project(pid, spec=modified_spec, status="approved")
+
+    return {"project_id": pid, "status": "approved", "message": "PRD 已确认，后续流程请使用 /develop/stream?pid=..."}
 
 @app.get("/")
 def root():
