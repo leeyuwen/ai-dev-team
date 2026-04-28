@@ -15,7 +15,7 @@
     </div>
 
     <div v-if="content" class="text-xs text-gray-300 leading-relaxed">
-      <pre class="whitespace-pre-wrap break-words font-sans">{{ truncate(content, 200) }}</pre>
+          <pre class="whitespace-pre-wrap break-words font-sans">{{ isActive ? content : truncate(content, 200) }}</pre>
     </div>
     <div v-else-if="isActive" class="text-xs text-gray-500 italic">
       执行中...
