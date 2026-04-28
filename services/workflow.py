@@ -58,7 +58,7 @@ def stream_pm_only(requirement: str):
     """
     流式运行产品经理 Agent，逐 token yield。
     Yields: (token: str, is_done: bool, result: dict)
-      - token: 每个 LLM token
+      - token: 每个 LLM token（已过滤 thinking 思考块）
       - is_done True 时，result 包含 {"spec": ..., "project_id": ..., "name": ...}
     """
     from services.project import svc
@@ -75,18 +75,16 @@ def stream_pm_only(requirement: str):
 
     spec = ""
     t0 = time.time()
+
     for chunk in pm_chain.stream({"requirement": requirement}):
         token = chunk.content if hasattr(chunk, "content") else ""
         spec += token
         yield token, False, None
 
     elapsed = int((time.time() - t0) * 1000)
-    log_agent_complete(f"产品经理 [{request_id}]", spec)
     log_llm_call(f"产品经理 [{request_id}]", model_name, elapsed, status="OK")
 
-    svc.update(pid, spec=spec, status="draft")
-    result = {"spec": spec, "project_id": pid, "name": project["name"]}
-    yield "", True, result
+    yield "", True, {"spec": spec, "requirement": requirement, "project_id": pid, "name": project["name"]}
 
 
 # ── PM 阶段（非流式，同步返回）───────────────────────────────────────────────
@@ -116,6 +114,10 @@ def run_pm_only(requirement: str) -> dict:
         f"产品经理 [{request_id}]",
         model_name,
     )
+
+    # 过滤 thinking 块（MiniMax 模型输出内容中可能包含 <think>...</think>）
+    import re
+    spec = re.sub(r"<think>.*?</think>", "", spec, flags=re.DOTALL)
 
     # 持久化 spec
     svc.update(pid, spec=spec, status="draft")

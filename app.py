@@ -117,34 +117,20 @@ async def develop_stream(request: DevelopmentRequest):
 
             skill_context = build_skill_context(request.requirement)
 
-            yield f"event: status\ndata: {json.dumps({'type': 'status', 'data': '产品经理正在分析需求...', 'done': False}, ensure_ascii=False)}\n\n"
-
-            # 在线程池中运行流式 PM generator
-            stream_gen = stream_pm_only(request.requirement)
-
+            # PM 阶段：流式返回（不过滤 thinking，用户实时看到思考过程）
             spec_text = ""
-            project_id = ""
-            project_name = ""
+            project_id = None
+            project_name = None
 
-            while True:
-                try:
-                    token, is_done, result = await loop.run_in_executor(
-                        executor, lambda: next(stream_gen)
-                    )
-                except StopIteration:
-                    break
-
-                if is_done:
-                    if result:
-                        project_id = result.get("project_id", "")
-                        project_name = result.get("name", "")
-                    break
-
-                spec_text += token
-                # 推送每个 token，前端可实时追加显示
-                yield f"event: pm_token\ndata: {json.dumps({'type': 'pm_token', 'token': token, 'done': False}, ensure_ascii=False)}\n\n"
-
-            executor.shutdown(wait=False)
+            for token, is_done, result in stream_pm_only(request.requirement):
+                if token:
+                    spec_text += token
+                    yield f"event: pm_token\ndata: {json.dumps({'type': 'pm_token', 'token': token}, ensure_ascii=False)}\n\n"
+                if is_done and result:
+                    project_id = result["project_id"]
+                    project_name = result["name"]
+                    # 过滤存储用的 spec（用户已看到完整 thinking，无需再过滤）
+                    project_store.update_project(project_id, spec=spec_text, status="draft")
 
             yield f"event: product_manager\ndata: {json.dumps({'type': 'product_manager', 'data': spec_text, 'project_id': project_id, 'name': project_name, 'done': False}, ensure_ascii=False)}\n\n"
             yield f"event: await_approval\ndata: {json.dumps({'type': 'await_approval', 'data': spec_text, 'project_id': project_id, 'name': project_name, 'skill_context': skill_context, 'done': True}, ensure_ascii=False)}\n\n"
